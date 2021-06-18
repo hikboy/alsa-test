@@ -61,32 +61,38 @@ int setparams_stream(snd_pcm_t *handle,
 	int err;
 	unsigned int rrate;
 
+	//Fill params with a full configuration space for a PCM.
 	err = snd_pcm_hw_params_any(handle, params);
 	if (err < 0) {
 		printf("Broken configuration for %s PCM: no configurations available: %s\n", snd_strerror(err), id);
 		return err;
 	}
+	//Restrict a configuration space to contain only real hardware rates.
 	err = snd_pcm_hw_params_set_rate_resample(handle, params, resample);
 	if (err < 0) {
 		printf("Resample setup failed for %s (val %i): %s\n", id, resample, snd_strerror(err));
 		return err;
 	}
+	//Restrict a configuration space to contain only one access type.
 	err = snd_pcm_hw_params_set_access(handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
 	if (err < 0) {
 		printf("Access type not available for %s: %s\n", id, snd_strerror(err));
 		return err;
 	}
+	//Restrict a configuration space to contain only one format.
 	err = snd_pcm_hw_params_set_format(handle, params, format);
 	if (err < 0) {
 		printf("Sample format not available for %s: %s\n", id, snd_strerror(err));
 		return err;
 	}
+	//Restrict a configuration space to contain only one channels count.
 	err = snd_pcm_hw_params_set_channels(handle, params, channels);
 	if (err < 0) {
 		printf("Channels count (%i) not available for %s: %s\n", channels, id, snd_strerror(err));
 		return err;
 	}
 	rrate = rate;
+	//Restrict a configuration space to have rate nearest to a target.
 	err = snd_pcm_hw_params_set_rate_near(handle, params, &rrate, 0);
 	if (err < 0) {
 		printf("Rate %iHz not available for %s: %s\n", rate, id, snd_strerror(err));
@@ -108,8 +114,10 @@ int setparams_bufsize(snd_pcm_t *handle,
 	int err;
 	snd_pcm_uframes_t periodsize;
 
+	//copy one snd_pcm_hw_params_t to another
 	snd_pcm_hw_params_copy(params, tparams);
 	periodsize = bufsize * 2;
+	//Restrict a configuration space to have buffer size nearest to a target.
 	err = snd_pcm_hw_params_set_buffer_size_near(handle, params, &periodsize);
 	if (err < 0) {
 		printf("Unable to set buffer size %li for %s: %s\n", bufsize * 2, id, snd_strerror(err));
@@ -119,6 +127,7 @@ int setparams_bufsize(snd_pcm_t *handle,
 		periodsize = period_size;
 	else
 		periodsize /= 2;
+	//Restrict a configuration space to have period size nearest to a target.
 	err = snd_pcm_hw_params_set_period_size_near(handle, params, &periodsize, 0);
 	if (err < 0) {
 		printf("Unable to set period size %li for %s: %s\n", periodsize, id, snd_strerror(err));
@@ -135,16 +144,19 @@ int setparams_set(snd_pcm_t *handle,
 	int err;
 	snd_pcm_uframes_t val;
 
+	//Install one PCM hardware configuration chosen from a configuration space and snd_pcm_prepare it.
 	err = snd_pcm_hw_params(handle, params);
 	if (err < 0) {
 		printf("Unable to set hw params for %s: %s\n", id, snd_strerror(err));
 		return err;
 	}
+	//Return current software configuration for a PCM.
 	err = snd_pcm_sw_params_current(handle, swparams);
 	if (err < 0) {
 		printf("Unable to determine current swparams for %s: %s\n", id, snd_strerror(err));
 		return err;
 	}
+	//Set start threshold inside a software configuration container.
 	err = snd_pcm_sw_params_set_start_threshold(handle, swparams, 0x7fffffff);
 	if (err < 0) {
 		printf("Unable to set start threshold mode for %s: %s\n", id, snd_strerror(err));
@@ -177,11 +189,11 @@ int setparams(snd_pcm_t *phandle, snd_pcm_t *chandle, int *bufsize)
 	unsigned int p_time, c_time;
 	unsigned int val;
 
-	snd_pcm_hw_params_alloca(&p_params);
+	snd_pcm_hw_params_alloca(&p_params); //allocate an invalid snd_pcm_hw_params_t using standard alloca
 	snd_pcm_hw_params_alloca(&c_params);
 	snd_pcm_hw_params_alloca(&pt_params);
 	snd_pcm_hw_params_alloca(&ct_params);
-	snd_pcm_sw_params_alloca(&p_swparams);
+	snd_pcm_sw_params_alloca(&p_swparams);//allocate an invalid snd_pcm_sw_params_t using standard alloca
 	snd_pcm_sw_params_alloca(&c_swparams);
 	if ((err = setparams_stream(phandle, pt_params, "playback")) < 0) {
 		printf("Unable to set parameters for playback stream: %s\n", snd_strerror(err));
@@ -215,19 +227,23 @@ int setparams(snd_pcm_t *phandle, snd_pcm_t *chandle, int *bufsize)
 		exit(0);
 	}
 
+	//Extract period size from a configuration space.
 	snd_pcm_hw_params_get_period_size(p_params, &p_psize, NULL);
 	if (p_psize > (unsigned int)*bufsize)
 		*bufsize = p_psize;
 	snd_pcm_hw_params_get_period_size(c_params, &c_psize, NULL);
 	if (c_psize > (unsigned int)*bufsize)
 		*bufsize = c_psize;
+
+	//Extract period time from a configuration space.
 	snd_pcm_hw_params_get_period_time(p_params, &p_time, NULL);
 	snd_pcm_hw_params_get_period_time(c_params, &c_time, NULL);
 	if (p_time != c_time)
 		goto __again;
-
+	//Extract buffer size from a configuration space.
 	snd_pcm_hw_params_get_buffer_size(p_params, &p_size);
 	if (p_psize * 2 < p_size) {
+				//Extract minimum periods count from a configuration space.
                 snd_pcm_hw_params_get_periods_min(p_params, &val, NULL);
                 if (val > 2) {
 			printf("playback device does not support 2 periods per buffer\n");
@@ -581,6 +597,7 @@ int main(int argc, char *argv[])
 	latency = latency_min - 4;
 	buffer = malloc((latency_max * snd_pcm_format_width(format) / 8) * 2);
 
+	//set priority
 	setscheduler();
 
 	printf("Playback device is %s\n", pdevice);
@@ -589,6 +606,7 @@ int main(int argc, char *argv[])
 	printf("Poll mode: %s\n", use_poll ? "yes" : "no");
 	printf("Loop limit is %lu frames, minimum latency = %i, maximum latency = %i\n", loop_limit, latency_min * 2, latency_max * 2);
 
+	//Opens a PCM.
 	if ((err = snd_pcm_open(&phandle, pdevice, SND_PCM_STREAM_PLAYBACK, block ? 0 : SND_PCM_NONBLOCK)) < 0) {
 		printf("Playback open error: %s\n", snd_strerror(err));
 		return 0;
@@ -619,7 +637,7 @@ int main(int argc, char *argv[])
 		if (setparams(phandle, chandle, &latency) < 0)
 			break;
 		showlatency(latency);
-		if ((err = snd_pcm_link(chandle, phandle)) < 0) {
+		if ((err = snd_pcm_link(chandle, phandle)) < 0) { //The two pcms will start/stop/prepare in sync
 			printf("Streams link error: %s\n", snd_strerror(err));
 			exit(0);
 		}

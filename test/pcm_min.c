@@ -21,6 +21,8 @@ int main(void)
 		printf("Playback open error: %s\n", snd_strerror(err));
 		exit(EXIT_FAILURE);
 	}
+
+	//Set the hardware and software parameters in a simple way.
 	if ((err = snd_pcm_set_params(handle,
 				      SND_PCM_FORMAT_U8,
 				      SND_PCM_ACCESS_RW_INTERLEAVED,
